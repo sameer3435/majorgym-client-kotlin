@@ -16,6 +16,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.RemoveCircleOutline
+import androidx.compose.material.icons.filled.Weekend
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
@@ -50,8 +51,10 @@ private val HISTORY_DATE_FORMAT: DateTimeFormatter =
 
 /**
  * Port of `attendance_screen.dart`. Shows today's check-in status, the
- * current streak, a "scan to mark attendance" action, and the last
- * [LocalStore.HISTORY_DAYS] days of present/absent history.
+ * current streak, a "scan to mark attendance" action, and the full
+ * present/absent/rest history since the member joined (capped at
+ * [LocalStore.MAX_HISTORY_DAYS], i.e. 1 year). Sundays are always shown as
+ * a rest day and never break the streak.
  */
 @Composable
 fun AttendanceScreen(scanResult: String?, onResultConsumed: () -> Unit, onScan: () -> Unit, onBack: () -> Unit) {
@@ -66,9 +69,10 @@ fun AttendanceScreen(scanResult: String?, onResultConsumed: () -> Unit, onScan: 
 
     LaunchedEffect(Unit) {
         loading = true
+        val joiningDate = store.getMember()?.joiningDate ?: LocalDate.now()
         checkedInToday = store.checkedInToday()
-        streak = store.currentStreak()
-        days = store.lastTwoMonths()
+        streak = store.currentStreak(joiningDate)
+        days = store.attendanceHistory(joiningDate)
         loading = false
         when (scanResult) {
             "marked" -> snackbarHostState.showSnackbar("Attendance marked for today ✅")
@@ -120,7 +124,7 @@ fun AttendanceScreen(scanResult: String?, onResultConsumed: () -> Unit, onScan: 
                     }
                     Spacer(modifier = Modifier.height(24.dp))
                     Text(
-                        "Last ${LocalStore.HISTORY_DAYS} days",
+                        "History since joining",
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.titleMedium,
                     )
@@ -154,24 +158,24 @@ private fun StatCard(modifier: Modifier = Modifier, label: String, value: String
 
 @Composable
 private fun HistoryRow(day: LocalDate, status: String) {
-    val present = status == "present"
+    val (icon, label, color) = when (status) {
+        "present" -> Triple(Icons.Filled.CheckCircle, "Present", ClientColors.Success)
+        "rest" -> Triple(Icons.Filled.Weekend, "Rest day", ClientColors.Accent)
+        else -> Triple(
+            Icons.Filled.RemoveCircleOutline,
+            "Absent",
+            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+        )
+    }
     Row(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            if (present) Icons.Filled.CheckCircle else Icons.Filled.RemoveCircleOutline,
-            contentDescription = null,
-            tint = if (present) ClientColors.Success else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-        )
+        Icon(icon, contentDescription = null, tint = color)
         Text(
             day.format(HISTORY_DATE_FORMAT),
             modifier = Modifier.padding(start = 12.dp).weight(1f),
         )
-        Text(
-            if (present) "Present" else "Absent",
-            fontWeight = FontWeight.SemiBold,
-            color = if (present) ClientColors.Success else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-        )
+        Text(label, fontWeight = FontWeight.SemiBold, color = color)
     }
 }
