@@ -11,8 +11,13 @@ import java.time.LocalDate
  * original exactly:
  * - Member profile: one JSON blob, overwritten on every profile QR scan.
  * - Attendance: a map of "yyyy-MM-dd" -> "present". Any day not in the map
- *   is treated as absent. Only the last [HISTORY_DAYS] days are kept —
- *   older entries are pruned automatically.
+ *   is treated as absent, UNLESS it's a Sunday, in which case it's treated
+ *   as a "rest" day — never absent, and never breaks the streak.
+ *
+ * History is kept from the member's [Member.joiningDate] (the day the app
+ * was set up / they joined) up to a maximum of [MAX_HISTORY_DAYS] (1 year)
+ * — a rolling window is NOT used; older entries are only pruned once they
+ * fall outside both the joining date AND the 1-year cap.
  */
 class LocalStore private constructor(context: Context) {
 
@@ -42,13 +47,19 @@ class LocalStore private constructor(context: Context) {
         return map
     }
 
-    private fun writeMap(map: MutableMap<String, String>) {
-        val cutoffDay = LocalDate.now().minusDays(HISTORY_DAYS.toLong())
+    /** Earliest day still kept: the later of the joining date and 1 year ago. */
+    private fun cutoffDay(joiningDate: LocalDate?): LocalDate {
+        val yearCutoff = LocalDate.now().minusDays((MAX_HISTORY_DAYS - 1).toLong())
+        return if (joiningDate != null && joiningDate.isAfter(yearCutoff)) joiningDate else yearCutoff
+    }
+
+    private fun writeMap(map: MutableMap<String, String>, joiningDate: LocalDate?) {
+        val cutoff = cutoffDay(joiningDate)
         val it = map.entries.iterator()
         while (it.hasNext()) {
             val entry = it.next()
             val d = runCatching { LocalDate.parse(entry.key) }.getOrNull()
-            if (d != null && d.isBefore(cutoffDay)) it.remove()
+            if (d != null && d.isBefore(cutoff)) it.remove()
         }
         val o = JSONObject()
         map.forEach { (k, v) -> o.put(k, v) }
@@ -61,7 +72,7 @@ class LocalStore private constructor(context: Context) {
         val key = dayKey(LocalDate.now())
         if (map[key] == "present") return false
         map[key] = "present"
-        writeMap(map)
+        writeMap(map, getMember()?.joiningDate)
         return true
     }
 
@@ -70,32 +81,49 @@ class LocalStore private constructor(context: Context) {
         return map[dayKey(LocalDate.now())] == "present"
     }
 
-    /** Present/absent status for the last [HISTORY_DAYS] days, most recent (today) first. */
-    fun lastTwoMonths(): List<Pair<LocalDate, String>> {
+    /**
+     * Present/absent/rest status from [joiningDate] (or 1 year ago,
+     * whichever is later) through today, most recent (today) first.
+     * Sundays are always "rest" unless the member actually checked in.
+     */
+    fun attendanceHistory(joiningDate: LocalDate): List<Pair<LocalDate, String>> {
         val map = readMap()
         val today = LocalDate.now()
-        return (0 until HISTORY_DAYS).map { i ->
+        val start = cutoffDay(joiningDate)
+        val totalDays = java.time.temporal.ChronoUnit.DAYS.between(start, today).toInt() + 1
+        return (0 until totalDays).map { i ->
             val day = today.minusDays(i.toLong())
-            val status = if (map[dayKey(day)] == "present") "present" else "absent"
+            val status = when {
+                map[dayKey(day)] == "present" -> "present"
+                day.dayOfWeek == java.time.DayOfWeek.SUNDAY -> "rest"
+                else -> "absent"
+            }
             day to status
         }
     }
 
     /**
-     * Consecutive days of "present" counting back from today. If today isn't
-     * marked yet, counts back from yesterday instead (so the streak isn't
-     * shown as broken before the day is even over).
+     * Consecutive days counting back from today where the member was either
+     * "present" or the day was a Sunday ("rest" — doesn't require a
+     * check-in and never breaks the streak). If today isn't marked yet and
+     * isn't a Sunday, counting starts from yesterday instead (so the streak
+     * isn't shown as broken before the day is even over). Stops at
+     * [joiningDate] since there's no attendance before that.
      */
-    fun currentStreak(): Int {
-        val days = lastTwoMonths() // most recent first
-        var streak = 0
-        var startIndex = 0
-        if (days.isNotEmpty() && days[0].second == "absent") {
-            startIndex = 1
+    fun currentStreak(joiningDate: LocalDate): Int {
+        val map = readMap()
+        val today = LocalDate.now()
+        var day = today
+        if (day.dayOfWeek != java.time.DayOfWeek.SUNDAY && map[dayKey(day)] != "present") {
+            day = day.minusDays(1)
         }
-        for (i in startIndex until days.size) {
-            if (days[i].second == "present") {
+        var streak = 0
+        while (!day.isBefore(joiningDate)) {
+            val isRestDay = day.dayOfWeek == java.time.DayOfWeek.SUNDAY
+            val present = map[dayKey(day)] == "present"
+            if (present || isRestDay) {
                 streak++
+                day = day.minusDays(1)
             } else {
                 break
             }
@@ -104,7 +132,8 @@ class LocalStore private constructor(context: Context) {
     }
 
     companion object {
-        const val HISTORY_DAYS = 60
+        /** Hard cap on how far back history is kept/shown, even if joining date is older. */
+        const val MAX_HISTORY_DAYS = 365
         private const val PREFS_NAME = "majorgym_client_prefs"
         private const val MEMBER_KEY = "member_profile"
         private const val ATTENDANCE_KEY = "attendance_map"
