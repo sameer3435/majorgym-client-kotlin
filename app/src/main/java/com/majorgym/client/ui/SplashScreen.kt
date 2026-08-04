@@ -127,13 +127,9 @@ fun SplashScreen(onFinished: () -> Unit) {
     // released as soon as it finishes playing (or when the composable leaves).
     DisposableEffect(Unit) {
         val player = MediaPlayer.create(context, R.raw.splash_sound)
-        player?.setOnCompletionListener { it.release() }
         player?.start()
         onDispose {
-            player?.let {
-                if (it.isPlaying) it.stop()
-                it.release()
-            }
+            player?.release()
         }
     }
 
