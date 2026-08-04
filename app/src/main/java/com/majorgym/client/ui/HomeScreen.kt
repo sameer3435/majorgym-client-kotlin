@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Autorenew
 import androidx.compose.material.icons.rounded.CardMembership
 import androidx.compose.material.icons.rounded.EventAvailable
 import androidx.compose.material.icons.rounded.EventBusy
@@ -253,8 +252,6 @@ private fun ProfileCard(member: Member) {
             InfoRow(Icons.Rounded.Phone, "Phone", member.phone)
             InfoDivider()
             InfoRow(Icons.Rounded.EventAvailable, "Joined", member.joiningDate.format(DATE_FORMAT))
-            InfoDivider()
-            InfoRow(Icons.Rounded.Autorenew, "Renewed", member.renewedDate.format(DATE_FORMAT))
             InfoDivider()
             InfoRow(
                 Icons.Rounded.EventBusy,

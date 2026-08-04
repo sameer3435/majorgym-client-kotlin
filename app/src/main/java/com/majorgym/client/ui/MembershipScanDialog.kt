@@ -16,7 +16,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.Autorenew
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.EventAvailable
 import androidx.compose.material.icons.rounded.EventBusy
@@ -63,13 +62,13 @@ private val SCAN_DIALOG_DATE_FORMAT: DateTimeFormatter =
  * QR. Expects a JSON payload with name, phone, id, joiningDate, plus plan
  * info. Expiry is always computed from the plan duration (see
  * [Member.fromQrJson] / [Member.Companion]) rather than trusted blindly from
- * the QR, and the original joining date is carried forward untouched on
- * renewals.
+ * the QR. Every scan is treated as a fresh, self-contained profile — same
+ * as the Dart source — and simply overwrites whatever was cached before.
  *
  * On a successful scan it saves the member, then shows a confirmation with
- * name/phone/joining/renew/expiry (member ID is intentionally NOT shown —
- * it's an internal key, not something the member needs to see) plus two
- * next steps: jump straight into Attendance, or dismiss back to Home.
+ * name/phone/joining/expiry (member ID is intentionally NOT shown — it's an
+ * internal key, not something the member needs to see) plus two next steps:
+ * jump straight into Attendance, or dismiss back to Home.
  */
 @Composable
 fun MembershipScanDialog(
@@ -124,11 +123,7 @@ fun MembershipScanDialog(
                             handled[0] = true
                             try {
                                 val json = JSONObject(raw)
-                                // Pass the cached profile (if any) so a renewal
-                                // scan carries the original joining date
-                                // forward instead of resetting it.
-                                val existing = store.getMember()
-                                val member = Member.fromQrJson(json, existing)
+                                val member = Member.fromQrJson(json)
                                 if (member.name.isEmpty() || member.id.isEmpty()) {
                                     throw IllegalArgumentException("Missing name/id in QR")
                                 }
@@ -222,8 +217,6 @@ private fun MembershipScanConfirmation(
                 ScanDialogRow(Icons.Rounded.Phone, "Phone", member.phone)
                 ScanDialogDivider()
                 ScanDialogRow(Icons.Rounded.EventAvailable, "Joined", member.joiningDate.format(SCAN_DIALOG_DATE_FORMAT))
-                ScanDialogDivider()
-                ScanDialogRow(Icons.Rounded.Autorenew, "Renewed", member.renewedDate.format(SCAN_DIALOG_DATE_FORMAT))
                 ScanDialogDivider()
                 ScanDialogRow(
                     Icons.Rounded.EventBusy,

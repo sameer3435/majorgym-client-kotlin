@@ -10,35 +10,27 @@ import java.time.format.DateTimeParseException
  * [LocalDate] (day precision) since the original only ever compares/stores
  * whole days.
  *
- * Date fields, and the rules that govern them:
- *  - [joiningDate]: the member's ORIGINAL join date. Set once, on the very
- *    first scan, and never touched again — renewals must never move it.
- *  - [renewedDate]: the date of the LATEST renewal. On a first-ever scan
- *    this equals [joiningDate]; every renewal after that overwrites it with
- *    that renewal's date.
- *  - [expiryDate]: always derived as `renewedDate + plan duration`, never
- *    from `joiningDate`. See [fromQrJson].
+ * Matches the Dart source's logic exactly: every scan of the "join / renew"
+ * QR is treated as a fresh, self-contained profile — [joiningDate] comes
+ * straight from that QR's `joiningDate` field (or today, if it's missing),
+ * and [expiryDate] is always derived from [joiningDate] + plan duration.
+ * There is no separate "renewed date" and no merging with whatever profile
+ * was cached before; a new scan simply overwrites it.
  */
 data class Member(
     val name: String,
     val phone: String,
     val id: String,
     val joiningDate: LocalDate,
-    val renewedDate: LocalDate,
     val expiryDate: LocalDate,
     val planLabel: String = "",
 ) {
     /** True once today is strictly after the expiry date. */
-    val isExpired: Boolean get() = LocalDate.now().isAfter(expiryDate)
+    val isExpired: Boolean get() = daysRemaining < 0
 
-    /**
-     * Always derived from `expiryDate - today`, never hardcoded/stored.
-     * Clamped to 0 once expired, so the UI can show "0 Days Remaining"
-     * instead of a negative number.
-     */
+    /** Days between today and [expiryDate]. Not clamped — can be negative. */
     val daysRemaining: Long
-        get() = if (isExpired) 0L
-        else java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), expiryDate)
+        get() = java.time.temporal.ChronoUnit.DAYS.between(LocalDate.now(), expiryDate)
 
     fun toStorageJson(): String {
         val o = JSONObject()
@@ -46,7 +38,6 @@ data class Member(
         o.put("phone", phone)
         o.put("id", id)
         o.put("joiningDate", joiningDate.format(ISO))
-        o.put("renewedDate", renewedDate.format(ISO))
         o.put("expiryDate", expiryDate.format(ISO))
         o.put("planLabel", planLabel)
         return o.toString()
@@ -57,21 +48,11 @@ data class Member(
 
         fun fromStorageJson(raw: String): Member {
             val map = JSONObject(raw)
-            val joining = LocalDate.parse(map.getString("joiningDate"))
-            // Back-compat: profiles saved before the "renewedDate" field
-            // existed don't have it yet — fall back to joiningDate so old
-            // installs don't crash on the first read after an app update.
-            val renewed = if (map.has("renewedDate")) {
-                LocalDate.parse(map.getString("renewedDate"))
-            } else {
-                joining
-            }
             return Member(
                 name = map.optString("name", ""),
                 phone = map.optString("phone", ""),
                 id = map.optString("id", ""),
-                joiningDate = joining,
-                renewedDate = renewed,
+                joiningDate = LocalDate.parse(map.getString("joiningDate")),
                 expiryDate = LocalDate.parse(map.getString("expiryDate")),
                 planLabel = map.optString("planLabel", ""),
             )
@@ -80,54 +61,25 @@ data class Member(
         /**
          * Parses the JSON payload carried by the "join / renew" QR code.
          * Expected keys (case-insensitive): name, phone, id, joiningDate,
-         * renewalDate, plus whatever the owner app includes to describe the
-         * plan (plan, planDays, planMonths, durationDays, expiryDate).
-         *
-         * [existing] is the member profile already cached on this device,
-         * if any:
-         *  - When null, this scan is the member's first-ever join: the
-         *    joining date comes from the QR (or today), and the renewed
-         *    date starts out equal to it.
-         *  - When non-null, this scan is a RENEWAL of that same member:
-         *    [Member.joiningDate] is carried over unchanged (it must never
-         *    change after the member renews), and the renewed date becomes
-         *    this renewal's date (from the QR, or today if the QR doesn't
-         *    say).
-         *
-         * Either way, expiry is always computed as
-         * `renewedDate + plan duration` — never from the joining date.
+         * plus whatever the owner app includes to describe the plan (plan,
+         * planDays, planMonths, durationDays, expiryDate/renewalDate).
          */
-        fun fromQrJson(json: JSONObject, existing: Member? = null): Member {
+        fun fromQrJson(json: JSONObject): Member {
             val map = HashMap<String, Any?>()
             json.keys().forEach { k -> map[k.lowercase()] = json.get(k) }
 
+            val joining = parseDate(map["joiningdate"]) ?: LocalDate.now()
             val plan = (map["plan"] ?: map["planname"] ?: "").toString()
-
-            val joining = existing?.joiningDate
-                ?: parseDate(map["joiningdate"])
-                ?: LocalDate.now()
-
-            val renewed = parseDate(map["renewaldate"])
-                ?: parseDate(map["reneweddate"])
-                ?: if (existing != null) LocalDate.now() else joining
-
-            val expiry = resolveExpiry(map, renewed)
+            val expiry = resolveExpiry(map, joining)
 
             return Member(
-                name = strOrNull(map["name"]) ?: existing?.name ?: "",
-                phone = strOrNull(map["phone"]) ?: existing?.phone ?: "",
-                id = strOrNull(map["id"]) ?: existing?.id ?: "",
+                name = (map["name"] ?: "").toString(),
+                phone = (map["phone"] ?: "").toString(),
+                id = (map["id"] ?: "").toString(),
                 joiningDate = joining,
-                renewedDate = renewed,
                 expiryDate = expiry,
-                planLabel = plan.ifEmpty { existing?.planLabel ?: "" },
+                planLabel = plan,
             )
-        }
-
-        private fun strOrNull(v: Any?): String? {
-            if (v == null || v == JSONObject.NULL) return null
-            val s = v.toString()
-            return s.ifBlank { null }
         }
 
         private fun parseDate(value: Any?): LocalDate? {
@@ -143,30 +95,27 @@ data class Member(
 
         /**
          * The expiry/renewal date coming straight from the QR isn't always
-         * trustworthy. Source of truth is [base] (the resolved renewal
-         * date) + plan duration, computed from whatever plan info is
-         * available (explicit day/month count, or the plan text, e.g.
-         * "1 Month"). An explicit "expiryDate" field in the QR is only used
-         * as a last resort, when the QR carries no plan/duration info at
-         * all to compute from — it must NEVER override a real plan
-         * duration, since that field has been observed to disagree with
-         * the plan (e.g. plan "1 Month" but expiryDate over a year out).
+         * trustworthy (it was showing the same day as joining). Source of
+         * truth is joining date + plan duration. We only trust an explicit
+         * expiry date if it's actually after the joining date; otherwise we
+         * compute it from whatever plan info is available, falling back to
+         * 1 month.
          */
-        private fun resolveExpiry(map: Map<String, Any?>, base: LocalDate): LocalDate {
+        private fun resolveExpiry(map: Map<String, Any?>, joining: LocalDate): LocalDate {
+            val explicit = parseDate(map["expirydate"]) ?: parseDate(map["renewaldate"])
+            if (explicit != null && explicit.isAfter(joining)) return explicit
+
             val days = asInt(map["durationdays"] ?: map["plandays"])
-            if (days != null) return base.plusDays(days.toLong())
+            if (days != null) return joining.plusDays(days.toLong())
 
             val months = asInt(map["planmonths"] ?: map["months"])
-            if (months != null) return base.plusMonths(months.toLong())
+            if (months != null) return joining.plusMonths(months.toLong())
 
             val planText = (map["plan"] ?: "").toString()
             val compute = parsePlanDuration(planText)
-            if (compute != null) return compute(base)
+            if (compute != null) return compute(joining)
 
-            val explicit = parseDate(map["expirydate"])
-            if (explicit != null && explicit.isAfter(base)) return explicit
-
-            return base.plusMonths(1)
+            return joining.plusMonths(1)
         }
 
         private fun asInt(v: Any?): Int? {

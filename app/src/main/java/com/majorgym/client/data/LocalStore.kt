@@ -8,16 +8,17 @@ import java.time.LocalDate
 /**
  * Port of the Flutter client's `lib/services/local_store.dart`.
  * Everything lives in SharedPreferences — no SQL, no cloud, matching the
- * original exactly:
+ * original:
  * - Member profile: one JSON blob, overwritten on every profile QR scan.
  * - Attendance: a map of "yyyy-MM-dd" -> "present". Any day not in the map
  *   is treated as absent, UNLESS it's a Sunday, in which case it's treated
  *   as a "rest" day — never absent, and never breaks the streak.
  *
- * History is kept from the member's [Member.joiningDate] (the day the app
- * was set up / they joined) up to a maximum of [MAX_HISTORY_DAYS] (1 year)
- * — a rolling window is NOT used; older entries are only pruned once they
- * fall outside both the joining date AND the 1-year cap.
+ * One deliberate change from the Dart source (a 60-day rolling window):
+ * history here is kept from the member's [Member.joiningDate] (the day the
+ * app was set up / they joined) up to a maximum of [MAX_HISTORY_DAYS]
+ * (1 year) — older entries are only pruned once they fall outside both the
+ * joining date AND the 1-year cap.
  */
 class LocalStore private constructor(context: Context) {
 
