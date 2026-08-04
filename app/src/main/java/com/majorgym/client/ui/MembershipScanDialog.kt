@@ -10,14 +10,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Autorenew
-import androidx.compose.material.icons.rounded.Badge
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.EventAvailable
 import androidx.compose.material.icons.rounded.EventBusy
@@ -47,6 +46,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.majorgym.client.data.LocalStore
 import com.majorgym.client.data.Member
 import kotlinx.coroutines.delay
@@ -54,31 +55,34 @@ import org.json.JSONObject
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-private val SCAN_PROFILE_DATE_FORMAT: DateTimeFormatter =
+private val SCAN_DIALOG_DATE_FORMAT: DateTimeFormatter =
     DateTimeFormatter.ofPattern("dd MMM yyyy", Locale.ENGLISH)
 
 /**
- * Port of `scan_profile_screen.dart`. Scans the "join / renew" QR. Expects a
- * JSON payload with name, phone, id, joiningDate, plus plan info. Expiry is
- * always computed as renewed date + plan duration (see [Member.fromQrJson])
- * rather than trusted blindly from the QR, and the original joining date is
- * carried forward untouched on renewals. Saves it and then shows a
- * confirmation with the saved details plus a direct shortcut into the
- * Attendance section, instead of silently bouncing back to Home.
+ * Full-screen overlay (not a separate page) for scanning the "join / renew"
+ * QR. Expects a JSON payload with name, phone, id, joiningDate, plus plan
+ * info. Expiry is always computed from the plan duration (see
+ * [Member.fromQrJson] / [Member.Companion]) rather than trusted blindly from
+ * the QR, and the original joining date is carried forward untouched on
+ * renewals.
+ *
+ * On a successful scan it saves the member, then shows a confirmation with
+ * name/phone/joining/renew/expiry (member ID is intentionally NOT shown —
+ * it's an internal key, not something the member needs to see) plus two
+ * next steps: jump straight into Attendance, or dismiss back to Home.
  */
 @Composable
-fun ScanProfileScreen(
-    onDone: () -> Unit,
+fun MembershipScanDialog(
+    onDismiss: () -> Unit,
+    onSaved: (Member) -> Unit,
     onGoToAttendance: () -> Unit,
-    onBack: () -> Unit,
 ) {
     val context = LocalContext.current
     val store = remember { LocalStore.getInstance(context) }
     val handled = remember { booleanArrayOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     // Once non-null, the scan succeeded and we show the confirmation card
-    // (name/phone/joining/renew/expiry) with a "Go to Attendance" option,
-    // instead of auto-navigating away.
+    // instead of the camera.
     var scannedMember by remember { mutableStateOf<Member?>(null) }
 
     LaunchedEffect(error) {
@@ -89,84 +93,85 @@ fun ScanProfileScreen(
         }
     }
 
-    Scaffold(
-        containerColor = ClientColors.Background,
-        topBar = {
-            TopAppBar(
-                title = { Text("Scan to Update Membership", fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = if (scannedMember == null) onBack else onDone) {
-                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = ClientColors.Background,
-                    titleContentColor = ClientColors.OnSurface,
-                ),
-            )
-        },
-    ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            val confirmed = scannedMember
-            if (confirmed == null) {
-                QrScannerView(
-                    modifier = Modifier.fillMaxSize(),
-                    onDetect = { raw ->
-                        if (handled[0]) return@QrScannerView
-                        handled[0] = true
-                        try {
-                            val json = JSONObject(raw)
-                            // Pass the cached profile (if any) so a renewal scan
-                            // carries the original joining date forward instead
-                            // of resetting it — see Member.fromQrJson.
-                            val existing = store.getMember()
-                            val member = Member.fromQrJson(json, existing)
-                            if (member.name.isEmpty() || member.id.isEmpty()) {
-                                throw IllegalArgumentException("Missing name/id in QR")
-                            }
-                            store.saveMember(member)
-                            scannedMember = member
-                        } catch (e: Exception) {
-                            error = "That doesn't look like a valid membership QR."
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Scaffold(
+            containerColor = ClientColors.Background,
+            topBar = {
+                TopAppBar(
+                    title = { Text("Scan to Update Membership", fontWeight = FontWeight.Bold) },
+                    navigationIcon = {
+                        IconButton(onClick = onDismiss) {
+                            Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Close")
                         }
                     },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = ClientColors.Background,
+                        titleContentColor = ClientColors.OnSurface,
+                    ),
                 )
-                if (error != null) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 32.dp)
-                            .background(ClientColors.Danger, RoundedCornerShape(14.dp))
-                            .padding(14.dp),
-                    ) {
-                        Text(
-                            error!!,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
+            },
+        ) { padding ->
+            Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+                val confirmed = scannedMember
+                if (confirmed == null) {
+                    QrScannerView(
+                        modifier = Modifier.fillMaxSize(),
+                        onDetect = { raw ->
+                            if (handled[0]) return@QrScannerView
+                            handled[0] = true
+                            try {
+                                val json = JSONObject(raw)
+                                // Pass the cached profile (if any) so a renewal
+                                // scan carries the original joining date
+                                // forward instead of resetting it.
+                                val existing = store.getMember()
+                                val member = Member.fromQrJson(json, existing)
+                                if (member.name.isEmpty() || member.id.isEmpty()) {
+                                    throw IllegalArgumentException("Missing name/id in QR")
+                                }
+                                store.saveMember(member)
+                                scannedMember = member
+                                onSaved(member)
+                            } catch (e: Exception) {
+                                error = "That doesn't look like a valid membership QR."
+                            }
+                        },
+                    )
+                    if (error != null) {
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 32.dp)
+                                .background(ClientColors.Danger, RoundedCornerShape(14.dp))
+                                .padding(14.dp),
+                        ) {
+                            Text(
+                                error!!,
+                                color = Color.White,
+                                fontWeight = FontWeight.Bold,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth(),
+                            )
+                        }
                     }
+                } else {
+                    MembershipScanConfirmation(
+                        member = confirmed,
+                        onGoToAttendance = onGoToAttendance,
+                        onBackToHome = onDismiss,
+                    )
                 }
-            } else {
-                ScanProfileConfirmation(
-                    member = confirmed,
-                    onGoToAttendance = onGoToAttendance,
-                    onBackToHome = onDone,
-                )
             }
         }
     }
 }
 
-/**
- * Shown right after a successful join/renew scan: a green success mark, the
- * saved member's name/phone/joining/renew/expiry (+ days remaining), and two
- * explicit next steps — jump straight into Attendance, or head back Home.
- */
 @Composable
-private fun ScanProfileConfirmation(
+private fun MembershipScanConfirmation(
     member: Member,
     onGoToAttendance: () -> Unit,
     onBackToHome: () -> Unit,
@@ -212,19 +217,18 @@ private fun ScanProfileConfirmation(
                 )
             }
             Column(modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
-                ScanConfirmDivider()
-                ScanConfirmRow(Icons.Rounded.Phone, "Phone", member.phone)
-                ScanConfirmDivider()
-                ScanConfirmRow(Icons.Rounded.Badge, "Member ID", member.id)
-                ScanConfirmDivider()
-                ScanConfirmRow(Icons.Rounded.EventAvailable, "Joined", member.joiningDate.format(SCAN_PROFILE_DATE_FORMAT))
-                ScanConfirmDivider()
-                ScanConfirmRow(Icons.Rounded.Autorenew, "Renewed", member.renewedDate.format(SCAN_PROFILE_DATE_FORMAT))
-                ScanConfirmDivider()
-                ScanConfirmRow(
+                ScanDialogDivider()
+                // Member ID is intentionally not shown here — internal key only.
+                ScanDialogRow(Icons.Rounded.Phone, "Phone", member.phone)
+                ScanDialogDivider()
+                ScanDialogRow(Icons.Rounded.EventAvailable, "Joined", member.joiningDate.format(SCAN_DIALOG_DATE_FORMAT))
+                ScanDialogDivider()
+                ScanDialogRow(Icons.Rounded.Autorenew, "Renewed", member.renewedDate.format(SCAN_DIALOG_DATE_FORMAT))
+                ScanDialogDivider()
+                ScanDialogRow(
                     Icons.Rounded.EventBusy,
                     "Expires",
-                    member.expiryDate.format(SCAN_PROFILE_DATE_FORMAT),
+                    member.expiryDate.format(SCAN_DIALOG_DATE_FORMAT),
                     valueColor = statusColor,
                 )
                 Spacer(modifier = Modifier.height(4.dp))
@@ -249,7 +253,7 @@ private fun ScanProfileConfirmation(
 }
 
 @Composable
-private fun ScanConfirmDivider() {
+private fun ScanDialogDivider() {
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -259,7 +263,7 @@ private fun ScanConfirmDivider() {
 }
 
 @Composable
-private fun ScanConfirmRow(
+private fun ScanDialogRow(
     icon: ImageVector,
     label: String,
     value: String,

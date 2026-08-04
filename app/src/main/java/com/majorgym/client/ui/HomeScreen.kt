@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Autorenew
-import androidx.compose.material.icons.rounded.Badge
 import androidx.compose.material.icons.rounded.CardMembership
 import androidx.compose.material.icons.rounded.EventAvailable
 import androidx.compose.material.icons.rounded.EventBusy
@@ -34,9 +33,6 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import kotlinx.coroutines.delay
-import java.time.Duration
-import java.time.LocalDateTime
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -49,29 +45,31 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.majorgym.client.data.LocalStore
 import com.majorgym.client.data.Member
+import kotlinx.coroutines.delay
+import java.time.Duration
+import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 private val DATE_FORMAT: DateTimeFormatter = DateTimeFormatter.ofPattern("dd MMM yyyy", Locale.ENGLISH)
 
 /**
- * Port of `home_screen.dart`. Shows the cached member profile (or a
- * "no membership scanned yet" placeholder), plus buttons to view attendance
- * and to scan a join/renew QR. [refreshKey] is bumped by the caller whenever
- * this screen is navigated back to, so it re-reads from [LocalStore].
+ * Home page: shows the cached member profile (or a "no membership scanned
+ * yet" placeholder), a button to view Attendance, and a button that opens
+ * the membership QR scanner as a full-screen overlay dialog right here on
+ * this page (see [MembershipScanDialog]) — scanning never leaves Home.
  */
 @Composable
 fun HomeScreen(
-    refreshKey: Int,
     onOpenAttendance: () -> Unit,
-    onScanProfile: () -> Unit,
 ) {
     val context = LocalContext.current
     val store = remember { LocalStore.getInstance(context) }
     var member by remember { mutableStateOf<Member?>(null) }
     var loading by remember { mutableStateOf(true) }
+    var showScanDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(refreshKey) {
+    LaunchedEffect(Unit) {
         loading = true
         member = store.getMember()
         loading = false
@@ -135,7 +133,7 @@ fun HomeScreen(
                     } else {
                         // Keyed on dayTick so the card (and its
                         // daysRemaining/isExpired reads) recomposes fresh
-                        // at each local midnight, not just on navigation.
+                        // at each local midnight, not just on re-entry.
                         key(dayTick) {
                             ProfileCard(m)
                         }
@@ -151,12 +149,23 @@ fun HomeScreen(
                     PremiumOutlinedButton(
                         text = "SCAN TO UPDATE MEMBERSHIP",
                         icon = Icons.Rounded.QrCodeScanner,
-                        onClick = onScanProfile,
+                        onClick = { showScanDialog = true },
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
             }
         }
+    }
+
+    if (showScanDialog) {
+        MembershipScanDialog(
+            onDismiss = { showScanDialog = false },
+            onSaved = { updated -> member = updated },
+            onGoToAttendance = {
+                showScanDialog = false
+                onOpenAttendance()
+            },
+        )
     }
 }
 
@@ -238,9 +247,10 @@ private fun ProfileCard(member: Member) {
             }
         }
         Column(modifier = Modifier.padding(20.dp)) {
+            // NOTE: Member ID is intentionally NOT shown — it's an internal
+            // key, not something the member needs to see, and as a long
+            // UUID it was also overflowing this card's layout.
             InfoRow(Icons.Rounded.Phone, "Phone", member.phone)
-            InfoDivider()
-            InfoRow(Icons.Rounded.Badge, "Member ID", member.id)
             InfoDivider()
             InfoRow(Icons.Rounded.EventAvailable, "Joined", member.joiningDate.format(DATE_FORMAT))
             InfoDivider()

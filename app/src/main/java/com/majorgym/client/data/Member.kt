@@ -144,14 +144,15 @@ data class Member(
         /**
          * The expiry/renewal date coming straight from the QR isn't always
          * trustworthy. Source of truth is [base] (the resolved renewal
-         * date) + plan duration. We only trust an explicit expiry date if
-         * it's actually after [base]; otherwise we compute it from
-         * whatever plan info is available, falling back to 1 month.
+         * date) + plan duration, computed from whatever plan info is
+         * available (explicit day/month count, or the plan text, e.g.
+         * "1 Month"). An explicit "expiryDate" field in the QR is only used
+         * as a last resort, when the QR carries no plan/duration info at
+         * all to compute from — it must NEVER override a real plan
+         * duration, since that field has been observed to disagree with
+         * the plan (e.g. plan "1 Month" but expiryDate over a year out).
          */
         private fun resolveExpiry(map: Map<String, Any?>, base: LocalDate): LocalDate {
-            val explicit = parseDate(map["expirydate"])
-            if (explicit != null && explicit.isAfter(base)) return explicit
-
             val days = asInt(map["durationdays"] ?: map["plandays"])
             if (days != null) return base.plusDays(days.toLong())
 
@@ -161,6 +162,9 @@ data class Member(
             val planText = (map["plan"] ?: "").toString()
             val compute = parsePlanDuration(planText)
             if (compute != null) return compute(base)
+
+            val explicit = parseDate(map["expirydate"])
+            if (explicit != null && explicit.isAfter(base)) return explicit
 
             return base.plusMonths(1)
         }

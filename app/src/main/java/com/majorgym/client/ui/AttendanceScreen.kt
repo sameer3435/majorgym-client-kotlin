@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.CheckCircle
@@ -38,7 +37,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,35 +57,38 @@ private val HISTORY_DATE_FORMAT: DateTimeFormatter =
     DateTimeFormatter.ofPattern("EEE, dd MMM yyyy", Locale.ENGLISH)
 
 /**
- * Port of `attendance_screen.dart`. Shows today's check-in status, the
- * current streak, a "scan to mark attendance" action, and the full
- * present/absent/rest history since the member joined (capped at
- * [LocalStore.MAX_HISTORY_DAYS], i.e. 1 year). Sundays are always shown as
- * a rest day and never break the streak.
+ * Attendance page: shows today's check-in status, the current streak, a
+ * "scan to mark attendance" action that opens the QR scanner as a
+ * full-screen overlay dialog right here (see [AttendanceScanDialog] —
+ * scanning never leaves this page), and the full present/absent/rest
+ * history since the member joined (capped at [LocalStore.MAX_HISTORY_DAYS],
+ * i.e. 1 year). Sundays are always shown as a rest day and never break the
+ * streak.
  */
 @Composable
-fun AttendanceScreen(scanResult: String?, onResultConsumed: () -> Unit, onScan: () -> Unit, onBack: () -> Unit) {
+fun AttendanceScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val store = remember { LocalStore.getInstance(context) }
     val snackbarHostState = remember { SnackbarHostState() }
+    val coroutineScope = rememberCoroutineScope()
 
     var loading by remember { mutableStateOf(true) }
     var checkedInToday by remember { mutableStateOf(false) }
     var streak by remember { mutableIntStateOf(0) }
     var days by remember { mutableStateOf<List<Pair<LocalDate, String>>>(emptyList()) }
+    var showScanDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
-        loading = true
+    fun refresh() {
         val joiningDate = store.getMember()?.joiningDate ?: LocalDate.now()
         checkedInToday = store.checkedInToday()
         streak = store.currentStreak(joiningDate)
         days = store.attendanceHistory(joiningDate)
+    }
+
+    LaunchedEffect(Unit) {
+        loading = true
+        refresh()
         loading = false
-        when (scanResult) {
-            "marked" -> snackbarHostState.showSnackbar("Attendance marked for today ✅")
-            "already" -> snackbarHostState.showSnackbar("You're already checked in today")
-        }
-        if (scanResult != null) onResultConsumed()
     }
 
     Scaffold(
@@ -139,7 +143,7 @@ fun AttendanceScreen(scanResult: String?, onResultConsumed: () -> Unit, onScan: 
                     PremiumButton(
                         text = "SCAN TO MARK ATTENDANCE",
                         icon = Icons.Rounded.QrCodeScanner,
-                        onClick = onScan,
+                        onClick = { showScanDialog = true },
                         modifier = Modifier.fillMaxWidth(),
                     )
                     Spacer(modifier = Modifier.height(26.dp))
@@ -160,6 +164,24 @@ fun AttendanceScreen(scanResult: String?, onResultConsumed: () -> Unit, onScan: 
                 }
             }
         }
+    }
+
+    if (showScanDialog) {
+        AttendanceScanDialog(
+            onDismiss = { showScanDialog = false },
+            onDone = { result ->
+                showScanDialog = false
+                refresh()
+                val message = when (result) {
+                    "marked" -> "Attendance marked for today ✅"
+                    "already" -> "You're already checked in today"
+                    else -> null
+                }
+                if (message != null) {
+                    coroutineScope.launch { snackbarHostState.showSnackbar(message) }
+                }
+            },
+        )
     }
 }
 
