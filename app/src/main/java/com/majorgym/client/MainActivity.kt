@@ -3,6 +3,8 @@ package com.majorgym.client
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
@@ -16,6 +18,7 @@ import com.majorgym.client.ui.HomeScreen
 import com.majorgym.client.ui.MajorGymClientTheme
 import com.majorgym.client.ui.ScanAttendanceScreen
 import com.majorgym.client.ui.ScanProfileScreen
+import com.majorgym.client.ui.SplashScreen
 
 /**
  * Single-activity app using manual sealed-class navigation, matching the
@@ -32,6 +35,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             MajorGymClientTheme {
+                var showSplash by remember { mutableStateOf(true) }
                 var screen by remember { mutableStateOf<Screen>(Screen.Home) }
                 // Bumped whenever Home should re-read the cached member
                 // profile (i.e. right after a successful profile scan).
@@ -42,35 +46,49 @@ class MainActivity : ComponentActivity() {
                 var attendanceScanResult by remember { mutableStateOf<String?>(null) }
 
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    when (screen) {
-                        Screen.Home -> HomeScreen(
-                            refreshKey = homeRefreshKey,
-                            onOpenAttendance = { screen = Screen.Attendance },
-                            onScanProfile = { screen = Screen.ScanProfile },
-                        )
+                    // Splash owns the first ~3.6s; the 400ms cross-fade below
+                    // is the "smooth transition into the dashboard" step
+                    // (this Compose BOM predates stable SharedTransitionLayout,
+                    // so a fade is the safe premium equivalent).
+                    Crossfade(
+                        targetState = showSplash,
+                        animationSpec = tween(durationMillis = 400),
+                        label = "splash-to-dashboard",
+                    ) { splashVisible ->
+                        if (splashVisible) {
+                            SplashScreen(onFinished = { showSplash = false })
+                        } else {
+                            when (screen) {
+                                Screen.Home -> HomeScreen(
+                                    refreshKey = homeRefreshKey,
+                                    onOpenAttendance = { screen = Screen.Attendance },
+                                    onScanProfile = { screen = Screen.ScanProfile },
+                                )
 
-                        Screen.ScanProfile -> ScanProfileScreen(
-                            onDone = {
-                                homeRefreshKey++
-                                screen = Screen.Home
-                            },
-                            onBack = { screen = Screen.Home },
-                        )
+                                Screen.ScanProfile -> ScanProfileScreen(
+                                    onDone = {
+                                        homeRefreshKey++
+                                        screen = Screen.Home
+                                    },
+                                    onBack = { screen = Screen.Home },
+                                )
 
-                        Screen.Attendance -> AttendanceScreen(
-                            scanResult = attendanceScanResult,
-                            onResultConsumed = { attendanceScanResult = null },
-                            onScan = { screen = Screen.ScanAttendance },
-                            onBack = { screen = Screen.Home },
-                        )
+                                Screen.Attendance -> AttendanceScreen(
+                                    scanResult = attendanceScanResult,
+                                    onResultConsumed = { attendanceScanResult = null },
+                                    onScan = { screen = Screen.ScanAttendance },
+                                    onBack = { screen = Screen.Home },
+                                )
 
-                        Screen.ScanAttendance -> ScanAttendanceScreen(
-                            onDone = { result ->
-                                attendanceScanResult = result
-                                screen = Screen.Attendance
-                            },
-                            onBack = { screen = Screen.Attendance },
-                        )
+                                Screen.ScanAttendance -> ScanAttendanceScreen(
+                                    onDone = { result ->
+                                        attendanceScanResult = result
+                                        screen = Screen.Attendance
+                                    },
+                                    onBack = { screen = Screen.Attendance },
+                                )
+                            }
+                        }
                     }
                 }
             }
