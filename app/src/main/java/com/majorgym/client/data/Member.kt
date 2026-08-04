@@ -76,22 +76,32 @@ data class Member(
 
         /**
          * Parses the JSON payload carried by the "join / renew" QR code.
-         * Expected keys (case-insensitive): name, phone, id, joiningDate,
-         * renewalDate, plus whatever the owner app includes to describe the
-         * plan (plan, planDays, planMonths, durationDays, expiryDate).
+         *
+         * The owner app (see its QrUtils.onboardingPayload) puts out:
+         * id, name, phone, plan, fee, joinedMillis, expiryMillis,
+         * passwordHash, token, tokenExpiryMillis, gymName, historyJson.
+         * Dates there are epoch-millisecond longs, NOT date strings — so
+         * this parser reads joinedMillis/expiryMillis first. The older
+         * string-keyed shape (joiningDate, renewalDate, durationDays,
+         * planMonths, expiryDate) is still accepted as a fallback in case
+         * some other source ever sends dates that way.
          *
          * [existing] is the member profile already cached on this device,
          * if any:
-         *  - When null, this scan is the member's first-ever join: the
-         *    joining date comes from the QR (or today), and the renewed
-         *    date starts out equal to it.
-         *  - When non-null, this scan is a RENEWAL of that same member:
-         *    [Member.joiningDate] is carried over unchanged, and the
-         *    renewed date becomes this renewal's date (from the QR, or
-         *    today if the QR doesn't say).
+         *  - When null, this scan is the member's first-ever join.
+         *  - When non-null, this scan is a RENEWAL of that same member.
          *
-         * Either way, expiry is always computed as
-         * `renewedDate + plan duration`.
+         * Field semantics, matching the owner app's Room entity:
+         *  - joinedMillis never changes once a member is created (renewals
+         *    only touch expiry/plan/fee/history), so it's trusted straight
+         *    from the QR as the one true joining date.
+         *  - expiryMillis is the owner app's own computed current expiry
+         *    (base date + plan duration) — the source of truth, not
+         *    something this app needs to (or should) recompute.
+         *  - renewedDate isn't a field the owner app sends directly; it's
+         *    taken from the most recent entry in historyJson (type
+         *    "Joined"/"Renewed" with a "date" millis field), falling back
+         *    to the joining date when there's no history yet.
          */
         fun fromQrJson(json: JSONObject, existing: Member? = null): Member {
             val map = HashMap<String, Any?>()
@@ -99,13 +109,16 @@ data class Member(
 
             val plan = (map["plan"] ?: map["planname"] ?: "").toString()
 
-            val joining = existing?.joiningDate
+            val joining = parseDateOrMillis(map["joinedmillis"])
                 ?: parseDate(map["joiningdate"])
+                ?: existing?.joiningDate
                 ?: LocalDate.now()
 
-            val renewed = parseDate(map["renewaldate"])
+            val renewed = latestHistoryDate(map["historyjson"])
+                ?: parseDateOrMillis(map["renewalmillis"])
+                ?: parseDate(map["renewaldate"])
                 ?: parseDate(map["reneweddate"])
-                ?: if (existing != null) LocalDate.now() else joining
+                ?: joining
 
             val expiry = resolveExpiry(map, renewed)
 
@@ -118,6 +131,26 @@ data class Member(
                 expiryDate = expiry,
                 planLabel = plan.ifEmpty { existing?.planLabel ?: "" },
             )
+        }
+
+        /** Reads the "date" millis of the last (most recent) entry in the owner
+         *  app's historyJson array — that's the actual last join/renewal date.
+         *  Returns null if there's no historyJson, it's empty, or malformed. */
+        private fun latestHistoryDate(value: Any?): LocalDate? {
+            if (value == null) return null
+            return try {
+                val arr = org.json.JSONArray(value.toString())
+                if (arr.length() == 0) return null
+                var latestMillis = -1L
+                for (i in 0 until arr.length()) {
+                    val entry = arr.optJSONObject(i) ?: continue
+                    val d = entry.optLong("date", -1L)
+                    if (d > latestMillis) latestMillis = d
+                }
+                if (latestMillis < 0) null else millisToLocalDate(latestMillis)
+            } catch (e: Exception) {
+                null
+            }
         }
 
         private fun strOrNull(v: Any?): String? {
@@ -137,18 +170,40 @@ data class Member(
             }
         }
 
+        /** Epoch millis (Long, Int, or numeric string) -> LocalDate in the device's
+         *  default zone. Used for the owner app's joinedMillis/expiryMillis fields. */
+        private fun millisToLocalDate(millis: Long): LocalDate =
+            java.time.Instant.ofEpochMilli(millis).atZone(java.time.ZoneId.systemDefault()).toLocalDate()
+
+        /** Accepts either an epoch-millis number (the owner app's format) or an
+         *  ISO date string, and resolves either to a LocalDate. A value is only
+         *  treated as millis when it's a large enough number to plausibly be one
+         *  (guards against a stray small integer being misread as a date). */
+        private fun parseDateOrMillis(value: Any?): LocalDate? {
+            if (value == null) return null
+            val asLong = when (value) {
+                is Long -> value
+                is Int -> value.toLong()
+                is Number -> value.toLong()
+                else -> value.toString().toLongOrNull()
+            }
+            if (asLong != null && asLong > 1_000_000_000_000L) return millisToLocalDate(asLong)
+            return parseDate(value)
+        }
+
         /**
-         * The expiry/renewal date coming straight from the QR isn't always
-         * trustworthy. Source of truth is [base] (the resolved renewal
-         * date) + plan duration, computed from whatever plan info is
-         * available (explicit day/month count, or the plan text, e.g.
-         * "1 Month"). An explicit "expiryDate" field in the QR is only used
-         * as a last resort, when the QR carries no plan/duration info at
-         * all to compute from — it must NEVER override a real plan
-         * duration, since that field has been observed to disagree with
-         * the plan (e.g. plan "1 Month" but expiryDate over a year out).
+         * Resolves the member's expiry date. The owner app's expiryMillis is its
+         * own already-computed, authoritative current expiry (base date + plan
+         * duration, done on the owner's side using the real plan table) — so
+         * when the QR carries it, that value is used directly rather than
+         * re-derived here. Duration-based computation (explicit day/month
+         * counts, or parsing the plan text, e.g. "1 Month") is kept only as a
+         * fallback for payloads that don't include expiryMillis/expiryDate.
          */
         private fun resolveExpiry(map: Map<String, Any?>, base: LocalDate): LocalDate {
+            val explicit = parseDateOrMillis(map["expirymillis"]) ?: parseDate(map["expirydate"])
+            if (explicit != null) return explicit
+
             val days = asInt(map["durationdays"] ?: map["plandays"])
             if (days != null) return base.plusDays(days.toLong())
 
@@ -158,9 +213,6 @@ data class Member(
             val planText = (map["plan"] ?: "").toString()
             val compute = parsePlanDuration(planText)
             if (compute != null) return compute(base)
-
-            val explicit = parseDate(map["expirydate"])
-            if (explicit != null && explicit.isAfter(base)) return explicit
 
             return base.plusMonths(1)
         }
