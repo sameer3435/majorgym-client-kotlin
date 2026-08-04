@@ -29,9 +29,14 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
+import java.time.Duration
+import java.time.LocalDateTime
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -72,6 +77,24 @@ fun HomeScreen(
         loading = false
     }
 
+    // member.daysRemaining / member.isExpired are computed live from
+    // LocalDate.now() (see Member.kt) rather than stored, so they're always
+    // correct on a fresh load. But if the app is simply left open across
+    // midnight, nothing else would trigger a recomposition to re-read
+    // "today" — this ticks once at each local midnight (checking hourly as
+    // a safety net) so the remaining-days count and ACTIVE/EXPIRED status
+    // update automatically without needing to relaunch the app.
+    var dayTick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            val now = LocalDateTime.now()
+            val nextMidnight = now.toLocalDate().plusDays(1).atStartOfDay()
+            val waitMs = Duration.between(now, nextMidnight).toMillis().coerceIn(1_000L, 60 * 60 * 1_000L)
+            delay(waitMs)
+            dayTick++
+        }
+    }
+
     Scaffold(
         containerColor = ClientColors.Background,
         topBar = {
@@ -110,7 +133,12 @@ fun HomeScreen(
                     if (m == null) {
                         NoMembershipCard()
                     } else {
-                        ProfileCard(m)
+                        // Keyed on dayTick so the card (and its
+                        // daysRemaining/isExpired reads) recomposes fresh
+                        // at each local midnight, not just on navigation.
+                        key(dayTick) {
+                            ProfileCard(m)
+                        }
                     }
                     Spacer(modifier = Modifier.height(24.dp))
                     PremiumButton(

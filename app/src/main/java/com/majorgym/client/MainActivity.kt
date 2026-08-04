@@ -33,7 +33,9 @@ import com.majorgym.client.ui.SplashScreen
  * no Navigation-Compose dependency).
  *
  * Screen graph (matches app.dart's Navigator.push flow):
- *   Home --(scan)--> ScanProfile --(saved)--> back to Home (profile refreshed)
+ *   Home --(scan)--> ScanProfile --(saved)--> confirmation card, then either
+ *     "Back to Home" (-> Home, profile refreshed) or "Go to Attendance"
+ *     (-> Attendance directly, profile refreshed)
  *   Home --(view attendance)--> Attendance --(scan)--> ScanAttendance
  *     --(marked/already)--> back to Attendance
  */
@@ -89,6 +91,15 @@ class MainActivity : ComponentActivity() {
                                         onDone = {
                                             homeRefreshKey++
                                             screen = Screen.Home
+                                        },
+                                        onGoToAttendance = {
+                                            // Profile is already saved by this point (see
+                                            // ScanProfileScreen) — bump the Home refresh key so
+                                            // it's up to date whenever the user eventually
+                                            // backs out of Attendance to Home, then jump
+                                            // straight into Attendance as requested.
+                                            homeRefreshKey++
+                                            screen = Screen.Attendance
                                         },
                                         onBack = { screen = Screen.Home },
                                     )
