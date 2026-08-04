@@ -10,12 +10,13 @@ import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -75,7 +76,10 @@ fun QrScannerView(
     if (hasPermission) {
         CameraPreview(modifier = modifier, onDetect = onDetect)
     } else {
-        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        Box(
+            modifier = modifier.fillMaxSize().background(ClientColors.Background),
+            contentAlignment = Alignment.Center,
+        ) {
             Column(
                 modifier = Modifier.padding(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -83,12 +87,14 @@ fun QrScannerView(
                 Text(
                     "Camera permission is needed to scan QR codes.",
                     textAlign = TextAlign.Center,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = ClientColors.OnSurface,
                 )
                 androidx.compose.foundation.layout.Spacer(modifier = Modifier.padding(8.dp))
-                Button(onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) }) {
-                    Text("Grant camera permission")
-                }
+                PremiumButton(
+                    text = "GRANT CAMERA PERMISSION",
+                    icon = Icons.Rounded.QrCodeScanner,
+                    onClick = { permissionLauncher.launch(Manifest.permission.CAMERA) },
+                )
             }
         }
     }

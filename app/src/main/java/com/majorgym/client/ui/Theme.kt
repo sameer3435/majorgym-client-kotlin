@@ -6,26 +6,40 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
 /**
- * Matches the Flutter client's dark theme: orange accent (0xFFFF6B35) on a
- * near-black background, with cards a shade lighter than the background —
- * see app.dart's `ColorScheme.fromSeed(seedColor: 0xFFFF6B35, dark)`.
+ * Premium blue color system for the MajorGym client. Replaces the previous
+ * orange accent theme end-to-end — every screen pulls from this single
+ * palette so the whole app reads as one consistent, premium design system.
  */
 object ClientColors {
-    val Accent = Color(0xFFFF6B35)
-    val Background = Color(0xFF0F1115)
-    val Surface = Color(0xFF1A1D24)
-    val OnSurface = Color(0xFFECEDEE)
-    val Hint = Color(0xFF9AA0A8)
-    val Success = Color(0xFF34D399)
-    val Danger = Color(0xFFEF5350)
+    val Background = Color(0xFF090E18)
+    val Surface = Color(0xFF111827)
+    val Primary = Color(0xFF2563EB)
+    val Accent = Color(0xFF3B82F6)
+    val LightBlue = Color(0xFF60A5FA)
+    val Success = Color(0xFF22C55E)
+    val Warning = Color(0xFFF59E0B)
+    val Danger = Color(0xFFEF4444)
+    val OnSurface = Color(0xFFFFFFFF)
+    val Hint = Color(0xFF94A3B8)
+    val Divider = Color(0xFF1E293B)
 }
 
 private val DarkColors = darkColorScheme(
-    primary = ClientColors.Accent,
+    primary = ClientColors.Primary,
+    onPrimary = ClientColors.OnSurface,
+    secondary = ClientColors.Accent,
+    onSecondary = ClientColors.OnSurface,
+    tertiary = ClientColors.LightBlue,
     background = ClientColors.Background,
-    surface = ClientColors.Surface,
     onBackground = ClientColors.OnSurface,
+    surface = ClientColors.Surface,
     onSurface = ClientColors.OnSurface,
+    surfaceVariant = ClientColors.Surface,
+    onSurfaceVariant = ClientColors.Hint,
+    error = ClientColors.Danger,
+    onError = ClientColors.OnSurface,
+    outline = ClientColors.Divider,
+    outlineVariant = ClientColors.Divider,
 )
 
 @Composable

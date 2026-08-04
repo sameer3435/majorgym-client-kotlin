@@ -61,9 +61,11 @@ import kotlin.random.Random
  * logo is the real brand mark, not a placeholder.
  */
 private object SplashColors {
-    val Background = Color.Black
-    val ElectricBlue = Color(0xFF00D9FF)
-    val ElectricBlueGlow = Color(0xFF6FF0FF)
+    // Matches the app-wide premium blue palette (ClientColors) so the
+    // splash flows straight into the dashboard without a color jump.
+    val Background = Color(0xFF090E18)
+    val ElectricBlue = Color(0xFF3B82F6)
+    val ElectricBlueGlow = Color(0xFF60A5FA)
 }
 
 private val BackOutEasing = CubicBezierEasing(0.34f, 1.56f, 0.64f, 1f)

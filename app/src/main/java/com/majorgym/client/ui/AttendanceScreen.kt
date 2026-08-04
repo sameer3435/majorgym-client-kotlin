@@ -1,5 +1,6 @@
 package com.majorgym.client.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,16 +10,18 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material.icons.filled.RemoveCircleOutline
-import androidx.compose.material.icons.filled.Weekend
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.LocalFireDepartment
+import androidx.compose.material.icons.rounded.QrCodeScanner
+import androidx.compose.material.icons.rounded.RemoveCircleOutline
+import androidx.compose.material.icons.rounded.Weekend
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -28,6 +31,7 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -37,6 +41,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -82,54 +88,69 @@ fun AttendanceScreen(scanResult: String?, onResultConsumed: () -> Unit, onScan: 
     }
 
     Scaffold(
+        containerColor = ClientColors.Background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
-                title = { Text("Attendance") },
+                title = { Text("Attendance", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back")
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = ClientColors.Background,
+                    titleContentColor = ClientColors.OnSurface,
+                ),
             )
         },
     ) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(ClientColors.Background)
+                .padding(padding),
+        ) {
             if (loading) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                CircularProgressIndicator(
+                    modifier = Modifier.align(Alignment.Center),
+                    color = ClientColors.Accent,
+                )
             } else {
                 Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
                     Row(modifier = Modifier.fillMaxWidth()) {
                         StatCard(
                             modifier = Modifier.weight(1f),
+                            icon = Icons.Rounded.CheckCircle,
                             label = "Today",
                             value = if (checkedInToday) "Present" else "Not marked",
-                            color = if (checkedInToday) ClientColors.Success else androidx.compose.ui.graphics.Color(0xFFFFA726),
+                            color = if (checkedInToday) ClientColors.Success else ClientColors.Warning,
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         StatCard(
                             modifier = Modifier.weight(1f),
+                            icon = Icons.Rounded.LocalFireDepartment,
                             label = "Streak",
                             value = "$streak day${if (streak == 1) "" else "s"}",
-                            color = ClientColors.Accent,
+                            color = ClientColors.LightBlue,
                         )
                     }
                     Spacer(modifier = Modifier.height(20.dp))
-                    Button(
+                    PremiumButton(
+                        text = "SCAN TO MARK ATTENDANCE",
+                        icon = Icons.Rounded.QrCodeScanner,
                         onClick = onScan,
-                        modifier = Modifier.fillMaxWidth().height(56.dp),
-                    ) {
-                        Icon(Icons.Filled.QrCodeScanner, contentDescription = null)
-                        Text("  SCAN TO MARK ATTENDANCE", fontWeight = FontWeight.Bold)
-                    }
-                    Spacer(modifier = Modifier.height(24.dp))
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Spacer(modifier = Modifier.height(26.dp))
                     Text(
                         "History since joining",
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.titleMedium,
+                        color = ClientColors.OnSurface,
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Card(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                    Spacer(modifier = Modifier.height(10.dp))
+                    PremiumCard(modifier = Modifier.fillMaxWidth().weight(1f)) {
                         LazyColumn {
                             items(days) { (day, status) ->
                                 HistoryRow(day, status)
@@ -143,14 +164,30 @@ fun AttendanceScreen(scanResult: String?, onResultConsumed: () -> Unit, onScan: 
 }
 
 @Composable
-private fun StatCard(modifier: Modifier = Modifier, label: String, value: String, color: androidx.compose.ui.graphics.Color) {
-    Card(modifier = modifier) {
+private fun StatCard(
+    modifier: Modifier = Modifier,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    label: String,
+    value: String,
+    color: Color,
+) {
+    PremiumCard(modifier = modifier) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 18.dp, horizontal = 12.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp, horizontal = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Text(label, color = ClientColors.Hint)
-            Spacer(modifier = Modifier.height(6.dp))
+            Box(
+                modifier = Modifier
+                    .size(38.dp)
+                    .clip(CircleShape)
+                    .background(color.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(20.dp))
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(label, color = ClientColors.Hint, fontSize = 13.sp)
+            Spacer(modifier = Modifier.height(4.dp))
             Text(value, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = color)
         }
     }
@@ -159,23 +196,27 @@ private fun StatCard(modifier: Modifier = Modifier, label: String, value: String
 @Composable
 private fun HistoryRow(day: LocalDate, status: String) {
     val (icon, label, color) = when (status) {
-        "present" -> Triple(Icons.Filled.CheckCircle, "Present", ClientColors.Success)
-        "rest" -> Triple(Icons.Filled.Weekend, "Rest day", ClientColors.Accent)
-        else -> Triple(
-            Icons.Filled.RemoveCircleOutline,
-            "Absent",
-            MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
-        )
+        "present" -> Triple(Icons.Rounded.CheckCircle, "Present", ClientColors.Success)
+        "rest" -> Triple(Icons.Rounded.Weekend, "Rest day", ClientColors.LightBlue)
+        else -> Triple(Icons.Rounded.RemoveCircleOutline, "Absent", ClientColors.Hint)
     }
     Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 18.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, contentDescription = null, tint = color)
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(color.copy(alpha = 0.15f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(18.dp))
+        }
         Text(
             day.format(HISTORY_DATE_FORMAT),
-            modifier = Modifier.padding(start = 12.dp).weight(1f),
+            modifier = Modifier.padding(start = 14.dp).weight(1f),
         )
-        Text(label, fontWeight = FontWeight.SemiBold, color = color)
+        StatusPill(label, color)
     }
 }

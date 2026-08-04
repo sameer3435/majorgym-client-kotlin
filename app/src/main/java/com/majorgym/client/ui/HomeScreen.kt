@@ -11,25 +11,21 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Badge
-import androidx.compose.material.icons.filled.PersonOutline
-import androidx.compose.material.icons.filled.CardMembership
-import androidx.compose.material.icons.filled.EventAvailable
-import androidx.compose.material.icons.filled.EventBusy
-import androidx.compose.material.icons.filled.FactCheck
-import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material.icons.filled.QrCodeScanner
-import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.rounded.Autorenew
+import androidx.compose.material.icons.rounded.Badge
+import androidx.compose.material.icons.rounded.CardMembership
+import androidx.compose.material.icons.rounded.EventAvailable
+import androidx.compose.material.icons.rounded.EventBusy
+import androidx.compose.material.icons.rounded.FactCheck
+import androidx.compose.material.icons.rounded.Person
+import androidx.compose.material.icons.rounded.Phone
+import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -40,7 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -76,10 +72,38 @@ fun HomeScreen(
         loading = false
     }
 
-    Scaffold(topBar = { TopAppBar(title = { Text("MajorGym") }) }) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+    Scaffold(
+        containerColor = ClientColors.Background,
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        "MajorGym",
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 0.5.sp,
+                    )
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = ClientColors.Background,
+                    titleContentColor = ClientColors.OnSurface,
+                ),
+            )
+        },
+    ) { padding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(ClientColors.Background)
+                .padding(padding),
+        ) {
             if (loading) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+                    ShimmerBox(modifier = Modifier.fillMaxWidth().height(300.dp))
+                    Spacer(modifier = Modifier.height(24.dp))
+                    ShimmerBox(modifier = Modifier.fillMaxWidth().height(58.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
+                    ShimmerBox(modifier = Modifier.fillMaxWidth().height(58.dp))
+                }
             } else {
                 Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
                     val m = member
@@ -89,27 +113,19 @@ fun HomeScreen(
                         ProfileCard(m)
                     }
                     Spacer(modifier = Modifier.height(24.dp))
-                    Button(
+                    PremiumButton(
+                        text = "VIEW ATTENDANCE",
+                        icon = Icons.Rounded.FactCheck,
                         onClick = onOpenAttendance,
-                        modifier = Modifier.fillMaxWidth().height(58.dp),
-                    ) {
-                        Icon(Icons.Filled.FactCheck, contentDescription = null)
-                        Text(
-                            "  VIEW ATTENDANCE",
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                     Spacer(modifier = Modifier.height(14.dp))
-                    OutlinedButton(
+                    PremiumOutlinedButton(
+                        text = "SCAN TO UPDATE MEMBERSHIP",
+                        icon = Icons.Rounded.QrCodeScanner,
                         onClick = onScanProfile,
-                        modifier = Modifier.fillMaxWidth().height(58.dp),
-                    ) {
-                        Icon(Icons.Filled.QrCodeScanner, contentDescription = null)
-                        Text(
-                            "  SCAN TO UPDATE MEMBERSHIP",
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
             }
         }
@@ -118,20 +134,28 @@ fun HomeScreen(
 
 @Composable
 private fun NoMembershipCard() {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    PremiumCard(modifier = Modifier.fillMaxWidth()) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(24.dp),
+            modifier = Modifier.fillMaxWidth().padding(28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Icon(
-                Icons.Filled.PersonOutline,
-                contentDescription = null,
-                modifier = Modifier.size(48.dp),
-                tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            Text("No membership scanned yet", fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(4.dp))
+            Box(
+                modifier = Modifier
+                    .size(64.dp)
+                    .clip(CircleShape)
+                    .background(ClientColors.Accent.copy(alpha = 0.14f)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    Icons.Rounded.Person,
+                    contentDescription = null,
+                    modifier = Modifier.size(32.dp),
+                    tint = ClientColors.LightBlue,
+                )
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Text("No membership scanned yet", fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            Spacer(modifier = Modifier.height(6.dp))
             Text(
                 "Use \"Scan to Update Membership\" below to get started.",
                 textAlign = TextAlign.Center,
@@ -145,83 +169,104 @@ private fun NoMembershipCard() {
 private fun ProfileCard(member: Member) {
     val active = !member.isExpired
     val initial = if (member.name.isNotEmpty()) member.name.first().uppercaseChar().toString() else "?"
+    val statusColor = if (active) ClientColors.Success else ClientColors.Danger
 
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                ClientColors.Accent.copy(alpha = 0.25f),
-                                MaterialTheme.colorScheme.surface,
-                            )
+    PremiumCard(modifier = Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            ClientColors.Primary.copy(alpha = 0.28f),
+                            ClientColors.Surface,
                         )
                     )
-                    .padding(vertical = 28.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(
-                        modifier = Modifier
-                            .size(80.dp)
-                            .clip(CircleShape)
-                            .background(ClientColors.Accent.copy(alpha = 0.2f)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(initial, fontSize = 32.sp, fontWeight = FontWeight.Bold, color = ClientColors.Accent)
-                    }
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Text(member.name, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(
-                                (if (active) ClientColors.Success else ClientColors.Danger).copy(alpha = 0.15f)
-                            )
-                            .padding(horizontal = 14.dp, vertical = 4.dp),
-                    ) {
-                        Text(
-                            if (active) "ACTIVE" else "EXPIRED",
-                            fontWeight = FontWeight.Bold,
-                            color = if (active) ClientColors.Success else ClientColors.Danger,
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        if (active) "${member.daysRemaining} day(s) remaining" else "Renew to regain access",
-                        color = ClientColors.Hint,
-                    )
+                )
+                .padding(vertical = 30.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Box(
+                    modifier = Modifier
+                        .size(84.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Brush.linearGradient(listOf(ClientColors.Primary, ClientColors.Accent))
+                        ),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(initial, fontSize = 32.sp, fontWeight = FontWeight.Bold, color = ClientColors.OnSurface)
                 }
+                Spacer(modifier = Modifier.height(14.dp))
+                Text(member.name, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Spacer(modifier = Modifier.height(10.dp))
+                StatusPill(if (active) "ACTIVE" else "EXPIRED", statusColor)
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    if (active) "${member.daysRemaining} day(s) remaining" else "0 Days Remaining · Renew to regain access",
+                    color = ClientColors.Hint,
+                )
             }
-            Column(modifier = Modifier.padding(16.dp)) {
-                InfoRow(Icons.Filled.Phone, "Phone", member.phone)
-                InfoRow(Icons.Filled.Badge, "ID", member.id)
-                InfoRow(Icons.Filled.EventAvailable, "Joined", member.joiningDate.format(DATE_FORMAT))
-                InfoRow(Icons.Filled.EventBusy, "Expires", member.expiryDate.format(DATE_FORMAT))
-                if (member.planLabel.isNotEmpty()) {
-                    InfoRow(Icons.Filled.CardMembership, "Plan", member.planLabel)
-                }
+        }
+        Column(modifier = Modifier.padding(20.dp)) {
+            InfoRow(Icons.Rounded.Phone, "Phone", member.phone)
+            InfoDivider()
+            InfoRow(Icons.Rounded.Badge, "Member ID", member.id)
+            InfoDivider()
+            InfoRow(Icons.Rounded.EventAvailable, "Joined", member.joiningDate.format(DATE_FORMAT))
+            InfoDivider()
+            InfoRow(Icons.Rounded.Autorenew, "Renewed", member.renewedDate.format(DATE_FORMAT))
+            InfoDivider()
+            InfoRow(
+                Icons.Rounded.EventBusy,
+                "Expires",
+                member.expiryDate.format(DATE_FORMAT),
+                valueColor = statusColor,
+            )
+            if (member.planLabel.isNotEmpty()) {
+                InfoDivider()
+                InfoRow(Icons.Rounded.CardMembership, "Plan", member.planLabel)
             }
         }
     }
 }
 
 @Composable
-private fun InfoRow(icon: androidx.compose.ui.graphics.vector.ImageVector, label: String, value: String) {
+private fun InfoDivider() {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(ClientColors.Divider),
+    )
+}
+
+@Composable
+private fun InfoRow(
+    icon: ImageVector,
+    label: String,
+    value: String,
+    valueColor: androidx.compose.ui.graphics.Color = ClientColors.OnSurface,
+) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, contentDescription = null, tint = ClientColors.Hint, modifier = Modifier.size(20.dp))
-        Spacer(modifier = Modifier.height(0.dp))
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .clip(CircleShape)
+                .background(ClientColors.Accent.copy(alpha = 0.14f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, tint = ClientColors.LightBlue, modifier = Modifier.size(18.dp))
+        }
         Text(
             label,
             color = ClientColors.Hint,
             modifier = Modifier.padding(start = 12.dp).weight(1f),
         )
-        Text(value, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+        Text(value, fontWeight = FontWeight.Bold, fontSize = 15.sp, color = valueColor)
     }
 }
